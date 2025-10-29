@@ -114,7 +114,37 @@ docker logs ac-db-import
 
 ---
 
-## Step 6: Create Admin Account
+## Step 6: Update Database Realmlist
+
+**CRITICAL:** You must update the realmlist address in the database or clients won't see your server.
+
+```bash
+# Get your server's public IP
+curl ifconfig.me
+
+# Connect to the database
+docker exec -it ac-database mysql -uroot -ppassword
+
+# Update the realmlist (replace with YOUR IP)
+USE acore_auth;
+SELECT * FROM realmlist;
+UPDATE realmlist SET address='YOUR_SERVER_PUBLIC_IP' WHERE id = 1;
+SELECT * FROM realmlist;
+exit;
+
+# Restart worldserver to apply changes
+docker compose restart ac-worldserver
+```
+
+**Example:**
+```sql
+-- If your server IP is 45.123.456.789
+UPDATE realmlist SET address='45.123.456.789' WHERE id = 1;
+```
+
+---
+
+## Step 7: Create Admin Account
 
 ```bash
 # Connect to worldserver console
@@ -127,6 +157,109 @@ account create <username> <password>
 account set gmlevel <username> 3 -1
 
 # Detach from console (CTRL+P then CTRL+Q)
+```
+
+---
+
+## Step 8: Final Verification Checklist
+
+Before connecting with your client, verify everything is set up correctly:
+
+### Server Status
+```bash
+# All containers should be running
+docker ps
+
+# Expected output: ac-database, ac-authserver, ac-worldserver all "Up"
+```
+
+### Firewall Check
+```bash
+sudo ufw status
+
+# Should show:
+# 3724/tcp                   ALLOW       Anywhere
+# 8085/tcp                   ALLOW       Anywhere
+```
+
+### Database Realmlist Check
+```bash
+docker exec -it ac-database mysql -uroot -ppassword -e "SELECT id, name, address, port FROM acore_auth.realmlist;"
+
+# Verify:
+# - address matches your server's public IP
+# - port is 8085
+```
+
+### Service Logs Check
+```bash
+# Check for errors in authserver
+docker logs ac-authserver --tail 50
+
+# Check for errors in worldserver
+docker logs ac-worldserver --tail 50
+
+# Both should show no critical errors
+```
+
+### Network Connectivity Test
+```bash
+# Test auth server port (from another machine or use online port checker)
+telnet YOUR_SERVER_IP 3724
+
+# Test world server port
+telnet YOUR_SERVER_IP 8085
+
+# Or use netcat if telnet not available:
+nc -zv YOUR_SERVER_IP 3724
+nc -zv YOUR_SERVER_IP 8085
+```
+
+### Client Realmlist Setup
+On your **client machine** (not server):
+
+1. Navigate to WoW 3.3.5a folder
+2. Edit `Data/enUS/realmlist.wtf`
+3. Content should be:
+   ```
+   set realmlist YOUR_SERVER_PUBLIC_IP
+   ```
+4. Save and close
+
+### Test Connection
+
+1. Launch WoW 3.3.5a client
+2. You should see your realm listed
+3. Login with the account you created
+4. Create a character and enter the world
+
+**If realm shows "Offline":**
+- Check worldserver is running: `docker ps`
+- Verify database realmlist matches your IP
+- Check firewall allows port 8085
+- Review worldserver logs: `docker logs ac-worldserver`
+
+---
+
+## Quick Start Summary
+
+Once everything is set up, this is all you need to do:
+
+```bash
+# Start server
+cd ~/azerothcore-wotlk
+docker compose up -d
+
+# Stop server
+docker compose down
+
+# View logs
+docker logs ac-worldserver -f
+
+# Create accounts
+docker attach ac-worldserver
+# Then: account create username password
+# CTRL+P, CTRL+Q to detach
 ```
 
 ---
@@ -176,6 +309,7 @@ USE acore_auth;
 SELECT * FROM realmlist;
 
 # Update the realm address to your server IP
+# IMPORTANT: Use your public IP if hosting on internet, or local IP if LAN only
 UPDATE realmlist SET address = 'YOUR_SERVER_IP' WHERE id = 1;
 
 # Optionally update the realm name
@@ -186,6 +320,20 @@ SELECT * FROM realmlist;
 
 # Exit
 exit;
+```
+
+**After updating, restart the worldserver:**
+```bash
+docker compose restart ac-worldserver
+```
+
+**Getting your server IP:**
+```bash
+# Get public IP (for internet hosting)
+curl ifconfig.me
+
+# Get local network IP (for LAN)
+hostname -I
 ```
 
 ### Realmlist Table Explained
